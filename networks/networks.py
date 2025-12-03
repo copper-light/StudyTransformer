@@ -19,12 +19,35 @@ class ResidualBlock(nn.Module):
 
 
 def calc_attention(query, key, value, mask:torch.Tensor=None):
-    qk = torch.matmul(query, key.transpose(-2, -1))
+    qk = torch.matmul(query, key.transpose(-2, -1)) # batch, head, q_seq, k_seq
     qk = qk / math.sqrt(query.size(-1)) # d_k: scaling by fc(embedding).output_size
     if mask is not None:
         qk = qk.masked_fill(mask == 0, -1e9)
     prob = nn.functional.softmax(qk, dim=-1)
-    return torch.matmul(prob, value)
+    return torch.matmul(prob, value) # batch, head, q_seq, k_seq
+
+
+# attention 값 계산할 때, softmax 취하기 전에 pad 값들이 확률을 취하는 것을 방지하기 위해서 mask 값을 계산함
+# 이 때, query, key 값은 임베딩되기 전의 토큰 인덱스 값임 (batch, seq_size)
+def make_pad_mask(query, key, pad_index=1):
+    query_seq_size = query.size(1)
+    key_seq_size = key.size(1)
+    q_mask = query.ne(pad_index).unsqueeze(1).unsqueeze(-1) # batch, 1(head), q_seq, 1
+    q_mask = q_mask.repeat(1, 1, 1, key_seq_size)
+    k_mask = key.ne(pad_index).unsqueeze(1).unsqueeze(1) # batch, 1(head), 1, k_seq
+    k_mask = k_mask.repeat(1, 1, query_seq_size, 1)
+    mask = q_mask * k_mask
+    mask.requires_grad = False
+    return mask
+
+def make_subsequent_mask(query, key):
+    query_seq_size = query.size(1)
+    key_seq_size = key.size(1)
+
+    mask = torch.ones(query.size(0), query_seq_size, key_seq_size).to(query.device)
+    mask = mask.tril(diagonal=0).type(torch.bool)
+    mask.requires_grad = False
+    return mask
 
 
 class MultiHeadAttention(nn.Module):
@@ -91,10 +114,10 @@ class EncoderBlock(nn.Module):
         return x
 
 class Encoder(nn.Module):
-    def __init__(self, n_layer, d_embedding, n_heads, d_attention, d_feedforward):
-        self.super().__init__()
+    def __init__(self, n_block, d_embedding, n_heads, d_attention, d_feedforward):
+        super().__init__()
         self.blocks = nn.ModuleList()
-        for i in range(n_layer):
+        for i in range(n_block):
             self.blocks.append(EncoderBlock(d_embedding, n_heads, d_attention, d_feedforward))
 
 
@@ -107,8 +130,7 @@ class Encoder(nn.Module):
 class DecoderBlock(nn.Module):
     def __init__(self, d_embedding, n_heads,  d_attention, d_feedforward):
         super().__init__()
-        self.masked_attention = MultiHeadAttention(d_embedding, n_heads, d_attention)
-
+        self.self_attention = MultiHeadAttention(d_embedding, n_heads, d_attention)
         self.cross_attention = MultiHeadAttention(d_embedding, n_heads, d_attention, is_cross_attention=True)
 
         # Position-wise Feed-Forward Layer
@@ -119,11 +141,11 @@ class DecoderBlock(nn.Module):
         )
         self.residual = ResidualBlock(d_embedding)
 
-    def forward(self, x, kv, mask=None):
-        out = self.masked_attention(x, mask=mask)
+    def forward(self, x, kv, self_mask=None, cross_mask=None):
+        out = self.self_attention(x, mask=self_mask)
         x = self.residual(x, out)
 
-        out = self.cross_attention(x, kv, mask=mask)
+        out = self.cross_attention(x, kv, mask=cross_mask)
         x = self.residual(x, out)
 
         out = self.feedforward(x)
@@ -132,11 +154,11 @@ class DecoderBlock(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, n_layer, d_embedding, n_heads, d_attention, d_feedforward):
-        self.super().__init__()
+    def __init__(self, n_block, d_embedding, n_heads, d_attention, d_feedforward):
+        super().__init__()
 
         self.blocks = nn.ModuleList()
-        for i in range(n_layer):
+        for i in range(n_block):
             self.blocks.append(DecoderBlock(d_embedding, n_heads, d_attention, d_feedforward))
 
     def forward(self, x, kv, mask=None):
@@ -144,38 +166,35 @@ class Decoder(nn.Module):
             x = block(x, kv, mask)
         return x
 
-#
-# BOS = 1
-# EOS = 2
-# PAD = 3
-# UNK = 4
 
-# class Transformer(nn.Module):
-#     def __init__(self, n_layer, n_seq, d_embedding, n_heads, d_attention, d_feedforward):
-#         super().__init__()
-#         self.n_seq = n_seq
-#         self.encoder = Encoder(n_layer, d_embedding, n_heads, d_attention, d_feedforward)
-#         self.decoder = Decoder(n_layer, d_embedding, n_heads, d_attention, d_feedforward)
-#
-#     def forward(self, x, mask=None):
-#         encoder_out = self.encoder(x, mask=mask)
-#         out = torch.Tensor(PAD).expand_as(x)
-#         for i in range(self.n_seq):
-#             x = self.decoder(x, encoder_out, mask)
-#
-#             torch.
-#             if x == EOS:
-#                 break
-#         return out
+class Transformer(nn.Module):
+    def __init__(self, n_src_voca, n_tgt_voca, n_block=6, d_embedding=512, n_heads=8, d_attention=512, d_feedforward = 2048):
+        super().__init__()
+        self.n_src_voca = n_src_voca
+        self.n_trt_voca = n_tgt_voca
+        # self.n_seq = n_seq
+        self.encoder = Encoder(n_block, d_embedding, n_heads, d_attention, d_feedforward)
+        self.decoder = Decoder(n_block, d_embedding, n_heads, d_attention, d_feedforward)
+        # self.fc = nn.Sequential(
+        #     nn.Linear(d_embedding, n_tgt_voca),
+        #     nn.Softmax(dim=-1),
+        # )
+
+    def forward(self, src, tgt, past_key_values=None, src_mask=None, tgt_mask=None, cross_mask=None):
+        if past_key_values is None:
+            past_key_values = self.encoder(src, mask=src_mask)
+        x = self.decoder(tgt, past_key_values, self_mask=tgt_mask, cross_mask=cross_mask)
+        # x = self.fc(x)
+        return x, past_key_values
+
 
 if __name__ == '__main__':
-    seq = torch.randn(3, 10, 5)
-    attention = MultiHeadAttention(5, 20, 10)
-    print(attention(seq).shape)
+    t = Transformer(100, 100)
+    src = torch.randn(1, 10, 512)
+    tgt = torch.randn(1, 256, 512)
 
-    encoder = EncoderBlock(d_embedding=5, n_heads=10, d_attention=20, d_feedforward=40)
-    out = encoder(seq)
-    print(out.shape)
+    x, past_key_values = t(src, tgt)
 
-    decoder = DecoderBlock(d_embedding=5, n_heads=10, d_attention=20, d_feedforward=40)
-    print(decoder(seq, out).shape)
+    x, past_key_values = t(src, tgt, past_key_values=past_key_values)
+
+    print(x.shape)
