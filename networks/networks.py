@@ -161,40 +161,82 @@ class Decoder(nn.Module):
         for i in range(n_block):
             self.blocks.append(DecoderBlock(d_embedding, n_heads, d_attention, d_feedforward))
 
-    def forward(self, x, kv, mask=None):
+    def forward(self, x, kv, self_mask=None, cross_mask=None):
         for block in self.blocks:
-            x = block(x, kv, mask)
+            x = block(x, kv, self_mask=self_mask, cross_mask=cross_mask)
         return x
 
 
-class Transformer(nn.Module):
-    def __init__(self, n_src_voca, n_tgt_voca, n_block=6, d_embedding=512, n_heads=8, d_attention=512, d_feedforward = 2048):
+class PositionalEncoding(nn.Module):
+    def __init__(self, n_seq, d_embedding):
         super().__init__()
-        self.n_src_voca = n_src_voca
-        self.n_trt_voca = n_tgt_voca
-        # self.n_seq = n_seq
+        self.n_seq = n_seq
+        self.d_embedding = d_embedding
+        encoding = torch.zeros(n_seq, d_embedding)
+        position = torch.arange(0, n_seq, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_embedding, 2) * (-math.log(10000.0) / d_embedding))
+        encoding[:, 0::2] = torch.sin(position * div_term)
+        encoding[:, 1::2] = torch.cos(position * div_term)
+        encoding = encoding.unsqueeze(0) # batch, seq, emd
+        self.register_buffer('encoding', encoding)
+
+    def forward(self, x):
+         return x + self.encoding[:, :x.size(1), :]
+
+
+class TokenEmbedding(nn.Module):
+    def __init__(self, vocab_size, d_embedding):
+        super().__init__()
+        self.embedding = nn.Embedding(vocab_size, d_embedding)
+        self.d_embedding = d_embedding
+
+    def forward(self, x):
+        return self.embedding(x) * math.sqrt(self.d_embedding)
+
+
+class Transformer(nn.Module):
+    def __init__(self, n_src_voca, n_tgt_voca, n_seq=256, n_block=6, d_embedding=512, n_heads=8, d_attention=512, d_feedforward = 2048):
+        super().__init__()
+        self.src_embedding = TokenEmbedding(vocab_size=n_src_voca, d_embedding=d_embedding)
+        self.tgt_embedding = TokenEmbedding(vocab_size=n_tgt_voca, d_embedding=d_embedding)
+        self.position_encoding = PositionalEncoding(n_seq=n_seq, d_embedding=d_embedding)
         self.encoder = Encoder(n_block, d_embedding, n_heads, d_attention, d_feedforward)
         self.decoder = Decoder(n_block, d_embedding, n_heads, d_attention, d_feedforward)
-        # self.fc = nn.Sequential(
-        #     nn.Linear(d_embedding, n_tgt_voca),
-        #     nn.Softmax(dim=-1),
-        # )
+        self.fc = nn.Sequential(
+            nn.Linear(d_embedding, n_tgt_voca),
+            nn.Softmax(dim=-1),
+        )
 
-    def forward(self, src, tgt, past_key_values=None, src_mask=None, tgt_mask=None, cross_mask=None):
+    def forward(self, src, tgt, past_key_values=None):
         if past_key_values is None:
+            src_mask = make_pad_mask(src, src)
+            src = self.src_embedding(src)
+            src = self.position_encoding(src)
+
             past_key_values = self.encoder(src, mask=src_mask)
-        x = self.decoder(tgt, past_key_values, self_mask=tgt_mask, cross_mask=cross_mask)
-        # x = self.fc(x)
-        return x, past_key_values
+
+        tgt_mask = make_pad_mask(tgt, tgt)
+        cross_mask = make_subsequent_mask(src, tgt)
+
+        tgt = self.tgt_embedding(tgt)
+        tgt = self.position_encoding(tgt)
+        out = self.decoder(tgt, past_key_values, self_mask=tgt_mask, cross_mask=cross_mask)
+        out = self.fc(out)
+        return out, past_key_values
 
 
 if __name__ == '__main__':
-    t = Transformer(100, 100)
-    src = torch.randn(1, 10, 512)
-    tgt = torch.randn(1, 256, 512)
+    vocab_size = 10
 
-    x, past_key_values = t(src, tgt)
 
-    x, past_key_values = t(src, tgt, past_key_values=past_key_values)
+    t = Transformer(vocab_size, vocab_size)
 
-    print(x.shape)
+    src = (torch.rand(1, 10) * 1000 % vocab_size).type(torch.int)
+    tgt = (torch.rand(1, 10) * 1000 % vocab_size).type(torch.int)
+
+    out, past_key_values = t(src, tgt)
+    out, past_key_values = t(src, tgt, past_key_values=past_key_values)
+    out, past_key_values = t(src, tgt, past_key_values=past_key_values)
+    out, past_key_values = t(src, tgt, past_key_values=past_key_values)
+
+    print(out.shape, out)
