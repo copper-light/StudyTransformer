@@ -202,7 +202,7 @@ class Transformer(nn.Module):
         self.position_encoding = PositionalEncoding(n_seq=n_seq, d_embedding=d_embedding)
         self.encoder = Encoder(n_block, d_embedding, n_heads, d_attention, d_feedforward)
         self.decoder = Decoder(n_block, d_embedding, n_heads, d_attention, d_feedforward)
-        self.fc = nn.Sequential(
+        self.generator = nn.Sequential(
             nn.Linear(d_embedding, n_tgt_voca),
             nn.Softmax(dim=-1),
         )
@@ -215,19 +215,18 @@ class Transformer(nn.Module):
 
             past_key_values = self.encoder(src, mask=src_mask)
 
-        tgt_mask = make_pad_mask(tgt, tgt)
-        cross_mask = make_subsequent_mask(src, tgt)
+        tgt_mask = make_pad_mask(tgt, tgt) & make_subsequent_mask(tgt, tgt)
+        cross_mask = make_pad_mask(src, tgt)
 
         tgt = self.tgt_embedding(tgt)
         tgt = self.position_encoding(tgt)
         out = self.decoder(tgt, past_key_values, self_mask=tgt_mask, cross_mask=cross_mask)
-        out = self.fc(out)
+        out = self.generator(out)
         return out, past_key_values
 
 
 if __name__ == '__main__':
     vocab_size = 10
-
 
     t = Transformer(vocab_size, vocab_size)
 
