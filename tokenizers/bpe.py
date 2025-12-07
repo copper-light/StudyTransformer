@@ -70,7 +70,7 @@ class BpeTokenizer:
     def tokenize(self, text:str):
         tokens = []
         sentence = self.preprocess(text)
-        print(sentence)
+
         for word in sentence:
             i = 0
             find = 0
