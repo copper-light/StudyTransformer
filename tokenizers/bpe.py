@@ -1,5 +1,25 @@
 import unicodedata
+import os
+from tqdm import tqdm
 from collections import Counter
+
+from enum import Enum
+
+
+class TOKEN(Enum):
+    UNK = 0
+    PAD = 1
+    BOS = 2
+    EOS = 3
+
+
+class Vocabulary:
+
+    def __init__(self, special_tokens=('<UNK>', '<PAD>', '<BOS>', '<EOS>')):
+        self.special_tokens = special_tokens
+
+
+    # def save
 
 def to_unicode(text: str):
     text = unicodedata.normalize("NFC", text)
@@ -8,27 +28,63 @@ def to_unicode(text: str):
 
 class BpeTokenizer:
 
-    def __init__(self):
+    def __init__(self, special_tokens=('<UNK>', '<PAD>', '<BOS>', '<EOS>'), save_path='save/', load_path=None):
         self.vocabulary = {}
+        self.special_tokens = special_tokens
+        self.voca_to_index = {}
+        self.index_to_voca = {}
+        self.filename = 'tokenizer.bpe'
+        self.save_path = save_path
 
-    def train(self, corpus:str):
+        if load_path is not None:
+            with open(os.path.join(load_path, self.filename), mode='r', encoding='utf-8') as f:
+                for line in f.readlines():
+                    if line.find(' ') == -1: break
+                    index, token, newline = line[:-1].split(' ')
+                    token = token.replace('<\\n>', '\n')
+                    self.index_to_voca[index] = token
+                    self.voca_to_index[token] = index
+                    # self.vocabulary
+
+    def train(self, corpus:list, num_epochs:int=100, vocab_size:int=100):
         # corpus = corpus.strip()
-        words = self.preprocess(corpus)
+        words = []
+        for row in corpus:
+            words.append(self.preprocess(row))
+        words = sum(words, [])
+        tokens = self.split_charecter(words)
+        vocabulary = set(sum(tokens, []))
 
-        self.tokens = self.split_charecter(words)
+        progress = tqdm(range(num_epochs))
 
-        num_epochs = 10
-        epoch = 0
-        while len(self.tokens) > 10 or epoch < num_epochs:
-            epoch += 1
-            pair_freqs = self.count_pairs(self.tokens)
+        for epoch in progress:
+            if len(vocabulary) <= vocab_size: break
+            pair_freqs = self.count_pairs(tokens)
             topk = Counter(pair_freqs).most_common(1)
             if topk[0][1] == 1: break
-            self.merge(topk[0][0][0], topk[0][0][1], self.tokens)
+            self.merge(topk[0][0][0], topk[0][0][1], tokens)
+            vocabulary = set(sum(tokens, []))
+            progress.set_description('Epoch {}/{}, Size of Voca {}/{}'.format(epoch + 1, num_epochs, len(vocabulary), vocab_size))
 
-        self.tokens = list(set(sum(self.tokens, [])))
-        self.vocabulary = set(self.tokens)
-        return self.vocabulary
+        if not os.path.exists(self.save_path):
+            os.makedirs(self.save_path)
+
+        with open(os.path.join(self.save_path, self.filename), mode='w', encoding='utf-8') as f:
+            index = 0
+            for t in self.special_tokens:
+                f.write(f"{index} {t} \n")
+                self.index_to_voca[index] = t
+                self.voca_to_index[t] = index
+                index += 1
+
+            for t in vocabulary:
+                t = t.replace('\n', '<\\n>')
+                f.write(f"{index} {t} \n")
+                self.index_to_voca[index] = t
+                self.voca_to_index[t] = index
+                index += 1
+
+        return vocabulary
 
     def preprocess(self, text):
         corpus = to_unicode(text)
@@ -73,60 +129,55 @@ class BpeTokenizer:
 
         for word in sentence:
             i = 0
-            find = 0
             while i < len(word):
-                prev = None
-                for j in range(i + 1, len(word)+1):
+                find = None
+                for j in range(len(word), 0, -1):
                     search = word[i:j]
-                    if search in self.vocabulary:
-                        prev = search
-                        find = j
-                    else:
-                        if prev is not None:
-                            break
+                    if search in self.voca_to_index:
+                        find = search
+                        i = j
+                        break
 
-                if prev is not None:
-                    tokens.append(prev)
-                    i = find
+                if find is not None:
+                    tokens.append(find)
                 else:
-                    tokens.append('<UNK>')
+                    tokens.append(self.special_tokens[TOKEN.UNK.value])
                     i += 1
+
+        return [self.special_tokens[TOKEN.BOS.value]] + tokens + [self.special_tokens[TOKEN.EOS.value]]
+
+    def encode(self, text:str, sequence_size = 256):
+        tokens = self.tokenize(text)
+        indexes = []
+        for token in tokens:
+            indexes.append(self.voca_to_index[token])
+
+        if len(indexes) < sequence_size:
+            indexes += [TOKEN.PAD.value for i in range(sequence_size-len(indexes))]
+        else:
+            indexes[-1] = TOKEN.EOS.value
+
+        return indexes
+
+    def decode(self, indexes:list):
+        tokens = []
+        for index in indexes:
+            tokens.append(self.index_to_voca[index])
 
         return tokens
 
-
-
-
 if __name__ == "__main__":
     tokenizer = BpeTokenizer()
-    c = tokenizer.train("""얼마 안됐는데 썸타는 거 가능?,썸 정도는 언제 타든 상관 없는 거 같아요.
-헤어진 남친이랑 다시 썸타기,다시 썸부터 시작해도 좋을 것 같아요.
-헤어진 여자친구랑 썸부터 시작할 수 있을까,완전히 똑같은 시작은 힘들겠지요.
-헬스장에서 인사하는 사람 맘에 드는데 번호 달라고 할까?,말씀해보세요.
-헬스장에서 자주 보는 여자가 보고싶어,한 번 말을 걸어보세요.
-헷갈리는데 유지하는 게 좋을까,좋아하면 유지하게 되겠지요.
-현실적 문제로 연애 포기해야할듯,잠시 쉬어도 괜찮아요.
-혈액형이 성격이랑 무슨 상관이지,상관 없는 거 같아요.
-호감을 표현하는 방법,취미와 성향 등이 같음을 어필해보세요.
-혼인신고 아직 안 했는데 이혼해도 될까,결심은 빠르면 빠를수록 좋아요.
-혼인신고 하러 왔어,법적 부부가 된 걸 축하해요!
-혼인신고하니까 마음이 이상해,법적 부부가 된 걸 축하해요!
-혼자 노력하는 연애인 거 같아,힘들면 잠시 놓는것도 방법이에요.
-혼자 썸타는 기분이야.,직접적이든 간접적이든 의사를 확실히 밝혀보세요.
-혼자 좋아하는 것 같아,외로운 상태인 거 같아요.
-나만 좋아하는 것 같아,적극적으로 꼬셔보세요.
-혼자 좋아하는 이야기 들어 볼래요?,손수건 준비할게요.
-혼자 좋아하는 이야기.,힘들겠지만 제게 말해보세요.
-혼자 좋아하는게 이렇게 힘든 적은 처음이에요.,사랑은 더 잘하게 되지 않고 다시 영에서 시작하니 모두 처음이겠죠.
-혼자가 편하다는 짝남에게 먼저 대쉬해버림.,거절의 뜻은 아니었나요.
-혼자가 편하다는 짝녀에게 들이댔음.,혼자가 편하다는 것이 거절의 뜻은 아니었을까요.
-혼자만 설레고 혼자서 끝내는 짝사랑 그만할래.,맘고생 많았어요.
-화이트데이에 고백할까요?,선물을 주면서 솔직하고 당당하게 고백해보세요.
-화장 안했는데 썸남이 영통 걸었어. 어떡해?,화장실 불빛으로 좀 멀리 가리고 해보세요.
-확실히 날 좋아하는 걸 아는 남자랑 친구가 될 수 있을까?,그 사람을 위해서는 그러면 안돼요.
-안녕하세요. 제 이름은 한동희 입니다. 여자친구랑 혼인 신고 하려고 준비 중이예요""")
-    print("vocabulary:", len(tokenizer.vocabulary))
-    t = tokenizer.tokenize('안녕하세요. 제 이름은 한동희 입니다. 여자친구랑 혼인 신고 하려고 준비 중이예요')
+    c = tokenizer.train(["제 이름은 한동희 입니다","여자친구랑 혼인 신고 하려고 준비 중이예요"])
+#     tokenizer = BpeTokenizer(load_path="save/")
+    print("vocabulary:", len(tokenizer.voca_to_index))
+    t = tokenizer.tokenize("""안녕하세요. 제 이름은 한동희 입니다. 여자친구랑 혼인 신고 하려고 준비 중이예요""")
+    print(t)
+
+    t = tokenizer.encode("""안녕하세요. 제 이름은 한동희 입니다. 여자친구랑 혼인 신고 하려고 준비 중이예요""")
+    print(t)
+
+    t = tokenizer.decode(t)
     print(t)
 
 
