@@ -46,19 +46,23 @@ class BpeTokenizer:
                     self.voca_to_index[token] = index
                     # self.vocabulary
 
-    def train(self, corpus:list, num_epochs:int=100, vocab_size:int=100):
+    def train(self, corpus:list, num_epochs:int=100, vocab_size:int=5000):
         # corpus = corpus.strip()
         words = []
+
+        print("preprocessing..")
         for row in corpus:
             words.append(self.preprocess(row))
         words = sum(words, [])
+        
+        print("Split charecters..")
         tokens = self.split_charecter(words)
         vocabulary = set(sum(tokens, []))
 
         # progress = tqdm(range(num_epochs))
 
         for epoch in range(num_epochs):
-            if len(vocabulary) <= vocab_size: break
+            if len(vocabulary) > vocab_size: break
             pair_freqs = self.count_pairs(tokens)
             topk = Counter(pair_freqs).most_common(1)
             if topk[0][1] == 1: break
@@ -98,36 +102,36 @@ class BpeTokenizer:
 
     def split_charecter(self, words:list):
         split_characters = []
-        for w in words:
+        progress = tqdm(words, total=len(words), desc="Split charecters..")
+        for w in progress:
             s_w = [c for c in w]
             split_characters.append(s_w)
+            # progress.update()
         return split_characters
 
     def count_pairs(self, split_characters:list):
         output = {}
-        progress = tqdm(enumerate(split_characters))
-        total = len(split_characters)
-        for step, w in progress:
+        progress = tqdm(range(len(split_characters)), total=len(split_characters),desc="Counting pairs..")
+        for step in progress:
+            w = split_characters[step]
             for i in range(len(w)-1):
                 pair = (w[i], w[i+1])
                 if pair not in output:
                     output[pair] = 1
                 else:
                     output[pair] += 1
-            progress.set_description(f'Counting pairs.. {step}/{total}')
+            # progress.update()
         return output
 
     def merge(self, a, b, target):
-        progress = tqdm(enumerate(target))
-        total = len(target)
-        for step, w in progress:
+        progress = tqdm(target, total=len(target),  desc="Merging pairs..")
+        for w in progress:
             if len(w) >= 2:
                 for i in range(len(w)-2, -1, -1):
                     if w[i] == a and w[i+1] == b:
                         w[i] = a+b
                         w.pop(i+1)
-
-            progress.set_description(f'Merging pairs.. {step}/{total}')
+            # progress.update()
 
 
     def tokenize(self, text:str):
@@ -174,17 +178,30 @@ class BpeTokenizer:
         return tokens
 
 if __name__ == "__main__":
-    tokenizer = BpeTokenizer()
-    c = tokenizer.train(["제 이름은 한동희 입니다","여자친구랑 혼인 신고 하려고 준비 중이예요"])
-#     tokenizer = BpeTokenizer(load_path="save/")
-    print("vocabulary:", len(tokenizer.voca_to_index))
-    t = tokenizer.tokenize("""안녕하세요. 제 이름은 한동희 입니다. 여자친구랑 혼인 신고 하려고 준비 중이예요""")
-    print(t)
+#     tokenizer = BpeTokenizer()
+#     c = tokenizer.train(["제 이름은 한동희 입니다","여자친구랑 혼인 신고 하려고 준비 중이예요"])
+# #     tokenizer = BpeTokenizer(load_path="save/")
+#     print("vocabulary:", len(tokenizer.voca_to_index))
+#     t = tokenizer.tokenize("""안녕하세요. 제 이름은 한동희 입니다. 여자친구랑 혼인 신고 하려고 준비 중이예요""")
+#     print(t)
 
-    t = tokenizer.encode("""안녕하세요. 제 이름은 한동희 입니다. 여자친구랑 혼인 신고 하려고 준비 중이예요""")
-    print(t)
+#     t = tokenizer.encode("""안녕하세요. 제 이름은 한동희 입니다. 여자친구랑 혼인 신고 하려고 준비 중이예요""")
+#     print(t)
 
-    t = tokenizer.decode(t)
-    print(t)
+#     t = tokenizer.decode(t)
+#     print(t)
 
+    # from tokenizers.bpe import BpeTokenizer
+    import csv
 
+    texts = []
+    with open('data/chatbot_kor/chatbot.csv', 'r', encoding='utf-8') as f:
+        data = csv.reader(f)
+        first_row = next(data)
+        for row in data:
+            texts.append(row[0])
+            texts.append(row[1])
+    len(texts)
+
+    t = BpeTokenizer()
+    t.train(texts)
