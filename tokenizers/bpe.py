@@ -55,16 +55,16 @@ class BpeTokenizer:
         tokens = self.split_charecter(words)
         vocabulary = set(sum(tokens, []))
 
-        progress = tqdm(range(num_epochs))
+        # progress = tqdm(range(num_epochs))
 
-        for epoch in progress:
+        for epoch in range(num_epochs):
             if len(vocabulary) <= vocab_size: break
             pair_freqs = self.count_pairs(tokens)
             topk = Counter(pair_freqs).most_common(1)
             if topk[0][1] == 1: break
             self.merge(topk[0][0][0], topk[0][0][1], tokens)
             vocabulary = set(sum(tokens, []))
-            progress.set_description('Epoch {}/{}, Size of Voca {}/{}'.format(epoch + 1, num_epochs, len(vocabulary), vocab_size))
+            print('Epoch {}/{}, Size of Voca {}/{}'.format(epoch + 1, num_epochs, len(vocabulary), vocab_size))
 
         if not os.path.exists(self.save_path):
             os.makedirs(self.save_path)
@@ -105,22 +105,29 @@ class BpeTokenizer:
 
     def count_pairs(self, split_characters:list):
         output = {}
-        for w in split_characters:
+        progress = tqdm(enumerate(split_characters))
+        total = len(split_characters)
+        for step, w in progress:
             for i in range(len(w)-1):
                 pair = (w[i], w[i+1])
                 if pair not in output:
                     output[pair] = 1
                 else:
                     output[pair] += 1
+            progress.set_description(f'Counting pairs.. {step}/{total}')
         return output
 
     def merge(self, a, b, target):
-        for w in target:
+        progress = tqdm(enumerate(target))
+        total = len(target)
+        for step, w in progress:
             if len(w) >= 2:
                 for i in range(len(w)-2, -1, -1):
                     if w[i] == a and w[i+1] == b:
                         w[i] = a+b
                         w.pop(i+1)
+
+            progress.set_description(f'Merging pairs.. {step}/{total}')
 
 
     def tokenize(self, text:str):
