@@ -25,10 +25,16 @@ if __name__ == '__main__':
     dataloader = DataLoader(dataset, batch_size=64, shuffle=True)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-5)
-    criterion = torch.nn.CrossEntropyLoss(ignore_index=0)
+    criterion = torch.nn.CrossEntropyLoss(ignore_index=-100)
 
     past_kv = None
-    for source, target in dataloader:
+    for source, target, label in dataloader:
         gen, past_kv = model(source, target, past_key_values=past_kv)
-        print(gen.shape, target.shape)
+
+        loss = criterion(gen.transpose(1,2), label)
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        print(loss.item())
+
         # criterion(gen, target)

@@ -202,10 +202,7 @@ class Transformer(nn.Module):
         self.position_encoding = PositionalEncoding(n_seq=n_seq, d_embedding=d_embedding)
         self.encoder = Encoder(n_block, d_embedding, n_heads, d_attention, d_feedforward)
         self.decoder = Decoder(n_block, d_embedding, n_heads, d_attention, d_feedforward)
-        self.generator = nn.Sequential(
-            nn.Linear(d_embedding, n_tgt_voca),
-            nn.Softmax(dim=-1),
-        )
+        self.generator = nn.Linear(d_embedding, n_tgt_voca)
 
     def forward(self, src, tgt, past_key_values=None):
         if past_key_values is None:
