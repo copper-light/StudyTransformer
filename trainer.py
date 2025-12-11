@@ -1,11 +1,15 @@
 import torch
 from torch.utils.data import DataLoader
 
+import random
+import os
 from tqdm import tqdm
 
 from networks.models import GeneratorTransformer
 from datasets.qa_datasets import QADataset
 from tokenizers import Tokenizer
+
+os.environ["PYTORCH_NO_CUDA_MEMORY_CACHING"] = "1"
 
 DEVICE = 'cpu'
 if torch.cuda.is_available():
@@ -36,27 +40,27 @@ if __name__ == '__main__':
     dataset = QADataset("data/chatbot_kor/chatbot.csv", tokenizer, max_length=seq_size, pad_token=PAD_INDEX)
     dataloader = DataLoader(dataset, batch_size=64, shuffle=True)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-5)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
     criterion = torch.nn.CrossEntropyLoss(ignore_index=-100)
 
     num_epoch = 10
     for epoch in range(num_epoch):
         progress_bar = tqdm(dataloader, desc="Epoch {}".format(epoch))
-        # model.train()
-        # for source, target, label in progress_bar:
-        #     source = source.to(DEVICE)
-        #     target = target.to(DEVICE)
-        #     label = label.to(DEVICE)
-        #
-        #     gen, past_kv = model(source, target)
-        #
-        #     loss = criterion(gen.transpose(1,2), label)
-        #     optimizer.zero_grad()
-        #     loss.backward()
-        #     optimizer.step()
-        #     progress_bar.set_postfix({
-        #         "loss": loss.item()
-        #     })
+        model.train()
+        for source, target, label in progress_bar:
+            source = source.to(DEVICE)
+            target = target.to(DEVICE)
+            label = label.to(DEVICE)
+        
+            gen, past_kv = model(source, target)
+        
+            loss = criterion(gen.transpose(1,2), label)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            progress_bar.set_postfix({
+                "loss": loss.item()
+            })
 
         model.eval()
         past_kv = None
@@ -64,7 +68,7 @@ if __name__ == '__main__':
         target[0] = BOS_INDEX
         target = torch.tensor(target, dtype=torch.long)
         with torch.no_grad():
-            source, _, _ = dataset[0]
+            source, _, _ = dataset[random.randint(0,len(dataset))]
             source = source.to(DEVICE)
             target = target.to(DEVICE)
             # label = label.to(DEVICE)
@@ -83,6 +87,10 @@ if __name__ == '__main__':
                 index += 1
 
             ids = target[0, :index+1]
-            print(tokenizer.decode(ids.numpy()))
+
+            user = [token.item() for token in source[0] if token != PAD_INDEX]
+            
+            print("USR:", tokenizer.decode(user))
+            print("BOT:", tokenizer.decode(ids.cpu().numpy()))
 
         # criterion(gen, target)
