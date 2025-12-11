@@ -5,7 +5,7 @@ from networks.networks import TokenEmbedding, PositionalEncoding, Encoder, Decod
 
 class GeneratorTransformer(nn.Module):
 
-    def __init__(self, n_src_voca, n_tgt_voca, n_seq=256, n_block=6, d_embedding=512, n_heads=8, d_attention=512, d_feedforward = 2048):
+    def __init__(self, n_src_voca, n_tgt_voca, n_seq=256, n_block=6, d_embedding=512, n_heads=8, d_attention=512, d_feedforward = 2048, print_model_size=False):
         super().__init__()
         self.src_embedding = TokenEmbedding(vocab_size=n_src_voca, d_embedding=d_embedding)
         self.tgt_embedding = TokenEmbedding(vocab_size=n_tgt_voca, d_embedding=d_embedding)
@@ -13,6 +13,12 @@ class GeneratorTransformer(nn.Module):
         self.encoder = Encoder(n_block, d_embedding, n_heads, d_attention, d_feedforward)
         self.decoder = Decoder(n_block, d_embedding, n_heads, d_attention, d_feedforward)
         self.generator = nn.Linear(d_embedding, n_tgt_voca)
+
+        if print_model_size:
+            total_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
+            print(f'Total number of trainable parameters: {total_params}, {total_params * 4 / 1024 ** 2:.2f} M')
+            total_params = sum(p.numel() for p in self.parameters())
+            print(f'Total number of parameters: {total_params}, {total_params * 4 / 1024 ** 2:.2f} M')
 
     def forward(self, src, tgt, past_key_values=None):
         if past_key_values is None:
