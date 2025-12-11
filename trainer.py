@@ -1,6 +1,7 @@
-import torch.nn as nn
-from sympy.printing.pytorch import torch
+import torch
 from torch.utils.data import DataLoader
+
+from tqdm import tqdm
 
 from networks.models import GeneratorTransformer
 from datasets.qa_datasets import QADataset
@@ -28,13 +29,19 @@ if __name__ == '__main__':
     criterion = torch.nn.CrossEntropyLoss(ignore_index=-100)
 
     past_kv = None
-    for source, target, label in dataloader:
-        gen, past_kv = model(source, target, past_key_values=past_kv)
 
-        loss = criterion(gen.transpose(1,2), label)
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-        print(loss.item())
+    num_epoch = 10
+    for epoch in range(num_epoch):
+        progress_bar = tqdm(dataloader, desc="Epoch {}".format(epoch))
+        for source, target, label in progress_bar:
+            gen, past_kv = model(source, target, past_key_values=past_kv)
+
+            loss = criterion(gen.transpose(1,2), label)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            progress_bar.set_postfix({
+                "loss": loss.item()
+            })
 
         # criterion(gen, target)
