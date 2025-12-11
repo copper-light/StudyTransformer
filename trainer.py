@@ -7,6 +7,10 @@ from networks.models import GeneratorTransformer
 from datasets.qa_datasets import QADataset
 from tokenizers import Tokenizer
 
+DEVICE = 'cpu'
+if torch.cuda.is_available():
+    DEVICE = 'cuda'
+
 if __name__ == '__main__':
     tokenizer = Tokenizer.from_file("voca.json")
     voca_size = tokenizer.get_vocab_size()
@@ -21,6 +25,7 @@ if __name__ == '__main__':
              n_heads=8,
              d_attention=512,
              d_feedforward=2048)
+    model = model.to(DEVICE)
 
     dataset = QADataset("data/chatbot_kor/chatbot.csv", tokenizer, max_length=seq_size, pad_token=0)
     dataloader = DataLoader(dataset, batch_size=64, shuffle=True)
@@ -34,7 +39,11 @@ if __name__ == '__main__':
     for epoch in range(num_epoch):
         progress_bar = tqdm(dataloader, desc="Epoch {}".format(epoch))
         for source, target, label in progress_bar:
-            gen, past_kv = model(source, target, past_key_values=past_kv)
+            source = source.to(DEVICE)
+            target = target.to(DEVICE)
+            label = label.to(DEVICE)
+            
+            gen, past_kv = model(source, target)
 
             loss = criterion(gen.transpose(1,2), label)
             optimizer.zero_grad()
