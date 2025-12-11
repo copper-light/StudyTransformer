@@ -12,7 +12,7 @@ from networks.models import GeneratorTransformer
 from datasets.qa_datasets import QADataset
 from tokenizers import Tokenizer
 
-os.environ["PYTORCH_NO_CUDA_MEMORY_CACHING"] = "1"
+# os.environ["PYTORCH_NO_CUDA_MEMORY_CACHING"] = "1"
 
 class StreamFlushingHandler(logging.StreamHandler):
     def emit(self, record):
@@ -81,10 +81,10 @@ if __name__ == '__main__':
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            progress_bar.set_postfix({
-                "loss": loss.item()
-            })
             losses.append(loss.item())
+            progress_bar.set_postfix({
+                "loss": np.mean(losses)
+            })
             
         logging.info(f'e: {epoch+1} - loss:{np.mean(losses)}')
 
