@@ -44,7 +44,7 @@ def make_subsequent_mask(query, key):
     query_seq_size = query.size(1)
     key_seq_size = key.size(1)
 
-    mask = torch.ones(query.size(0), query_seq_size, key_seq_size).to(query.device)
+    mask = torch.ones(query.size(0), 1, query_seq_size, key_seq_size).to(query.device)
     mask = mask.tril(diagonal=0).type(torch.bool)
     mask.requires_grad = False
     return mask

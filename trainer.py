@@ -1,0 +1,34 @@
+import torch.nn as nn
+from sympy.printing.pytorch import torch
+from torch.utils.data import DataLoader
+
+from networks.models import GeneratorTransformer
+from datasets.qa_datasets import QADataset
+from tokenizers import Tokenizer
+
+if __name__ == '__main__':
+    tokenizer = Tokenizer.from_file("voca.json")
+    voca_size = tokenizer.get_vocab_size()
+    print("Vocab size: {}".format(voca_size))
+    seq_size = 256
+
+    model = GeneratorTransformer(n_src_voca=voca_size,
+             n_tgt_voca=voca_size,
+             n_seq=seq_size,
+             n_block=6,
+             d_embedding=512,
+             n_heads=8,
+             d_attention=512,
+             d_feedforward=2048)
+
+    dataset = QADataset("data/chatbot_kor/chatbot.csv", tokenizer, max_length=seq_size, pad_token=0)
+    dataloader = DataLoader(dataset, batch_size=64, shuffle=True)
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-5)
+    criterion = torch.nn.CrossEntropyLoss(ignore_index=0)
+
+    past_kv = None
+    for source, target in dataloader:
+        gen, past_kv = model(source, target, past_key_values=past_kv)
+        print(gen.shape, target.shape)
+        # criterion(gen, target)
