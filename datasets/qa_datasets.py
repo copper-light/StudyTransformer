@@ -24,7 +24,7 @@ class QADataset(Dataset):
             reader = csv.reader(f)
             next(reader)
             for row in reader:
-                self.data.append((row[0], row[1]))
+                self.data.append(('<bos>'+row[0]+'<eos>', '<bos>'+row[0]+'<eos>'))
 
     def __len__(self):
         return len(self.data)
@@ -50,4 +50,3 @@ if __name__ == '__main__':
 
     for q, a, label in loader:
         print(q.shape, a.shape)
-        break

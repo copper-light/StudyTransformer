@@ -52,10 +52,10 @@ if __name__ == '__main__':
              n_tgt_voca=voca_size,
              n_seq=seq_size,
              n_block=6,
-             d_embedding=512,
+             d_embedding=256,
              n_heads=8,
-             d_attention=512,
-             d_feedforward=2048,
+             d_attention=256,
+             d_feedforward=512,
              print_model_size=True)
     model = model.to(DEVICE)
 
@@ -65,7 +65,7 @@ if __name__ == '__main__':
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
     criterion = torch.nn.CrossEntropyLoss(ignore_index=-100)
 
-    num_epoch = 40
+    num_epoch = 20
     for epoch in range(num_epoch):
         progress_bar = tqdm(dataloader, desc="Epoch {}".format(epoch))
         model.train()
