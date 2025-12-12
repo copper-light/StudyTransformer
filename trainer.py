@@ -46,7 +46,7 @@ if __name__ == '__main__':
     tokenizer = Tokenizer.from_file("voca.json")
     voca_size = tokenizer.get_vocab_size()
     print("Vocab size: {}".format(voca_size))
-    seq_size = 256
+    seq_size = 40
 
     model = GeneratorTransformer(n_src_voca=voca_size,
              n_tgt_voca=voca_size,
