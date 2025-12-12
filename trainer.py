@@ -65,7 +65,7 @@ if __name__ == '__main__':
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
     criterion = torch.nn.CrossEntropyLoss(ignore_index=-100)
 
-    num_epoch = 10
+    num_epoch = 40
     for epoch in range(num_epoch):
         progress_bar = tqdm(dataloader, desc="Epoch {}".format(epoch))
         model.train()
@@ -85,6 +85,14 @@ if __name__ == '__main__':
             progress_bar.set_postfix({
                 "loss": np.mean(losses)
             })
+
+
+        checkpoints = {
+            'optimizer': optimizer.state_dict(),
+            'model': model.state_dict()
+        }
+
+        torch.save(checkpoints, f'./logs/{epoch}.pt')
             
         logging.info(f'e: {epoch+1} - loss:{np.mean(losses)}')
 
